@@ -17,7 +17,7 @@ import CompactStandardLibrary;
 import "./modules/ShieldedToken";
 
 // Read-only views and low-level ledger ops from the module.
-export { totalSupply, balanceOf, mint, burn };
+export { totalSupply, balanceOf, mint, burn, transfer };
 
 // ---------------------------------------------------------------------------
 // Admin authority (keypair pattern from example-nft-contracts).

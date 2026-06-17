@@ -429,7 +429,50 @@ This is also why the testing story is so clean. Because the contract does not ow
 A few directions worth exploring once you have this working.
 
 - **Deploy to testnet.** Get test NIGHT tokens from the faucet, deploy the contract through the wallet SDK, and mint real shielded coins. The simulator code path and the deploy code path share the same contract and witnesses, so the only new code is the wallet connection.
-- **Add a transfer circuit.** The current contract tracks balances but does not move them between holders. A transfer circuit would debit the sender and credit the recipient in one atomic call, which is the pattern the bounty description calls `mint_and_send`.
+- **Atomic transfers between holders.** The contract above tracks balances per holder but stops there. The natural next step is a `transfer` circuit that moves value from one holder to another in a single call. The bounty description calls this the `mint_and_send` pattern. Here is how it looks.
+
+```compact
+export circuit transfer(to: ZswapCoinPublicKey, amount: Uint<64>): [] {
+  assert(to != default<ZswapCoinPublicKey>, "Recipient cannot be empty.");
+  assert(disclose(amount) > 0, "Amount must be positive.");
+
+  const sender = ownPublicKey();
+  assert(sender != to, "Cannot transfer to yourself.");
+  assert(balances.member(disclose(sender)), "Sender has no balance.");
+  assert(balances.lookup(disclose(sender)) >= disclose(amount), "Insufficient balance.");
+
+  // Debit sender.
+  const senderPrev: Uint<64> = balances.lookup(disclose(sender));
+  balances.insert(disclose(sender), (senderPrev - disclose(amount)) as Uint<64>);
+
+  // Credit recipient.
+  if (!balances.member(disclose(to))) {
+    balances.insert(disclose(to), 0);
+  }
+  const recipientPrev: Uint<64> = balances.lookup(disclose(to));
+  balances.insert(disclose(to), (recipientPrev + disclose(amount)) as Uint<64>);
+}
+```
+
+The key design choice is that the sender is not an argument. It comes from `ownPublicKey()`, the same built-in the burn circuit uses. A holder cannot move tokens they do not own because the circuit only ever debits the caller. There is no `transferFrom` analog with an approval pre-step, which keeps the surface small.
+
+Total supply is deliberately untouched. Transfers move value between holders, they do not create or destroy it. The only circuits that touch `totalSupply` are mint and burn. This separation makes the supply invariant easy to reason about. Any test that checks supply before and after a transfer should see the same number.
+
+The simulator tests for transfer follow the same pattern as the others. The one wrinkle is caller identity. The transfer circuit reads the sender from `ownPublicKey()`, which in the simulator pulls from the circuit context's Zswap local state. Before each transfer test you call `setCaller` on the simulator to set who is sending.
+
+```typescript
+it("transfers tokens between holders atomically, supply unchanged", () => {
+  const sim = new ShieldedTokenSimulator(freshAdminKey());
+  sim.mintShieldedToken(sampleRecipient, 1000n);
+  sim.setCaller(sampleRecipient);  // the funded holder is now the sender
+  sim.transfer(otherHolder, 300n);
+  expect(sim.balanceOf(sampleRecipient)).toEqual(700n);
+  expect(sim.balanceOf(otherHolder)).toEqual(300n);
+  expect(sim.getLedger().totalSupply).toEqual(1000n);  // unchanged
+});
+```
+
+Negative tests matter here too. Transfer to yourself should fail. Transfer of more than you own should fail. Transfer from a holder with no balance should fail. Each of those maps to an `assert` in the circuit, and each gets its own test.
 - **Keep amounts private.** Right now mint amounts are public because we `disclose()` them. To hide them, drop the on-chain balance tracking entirely and let the wallet's shielded coin layer own the accounting. The contract becomes a pure authorization gate. This is closer to how Midnight's own native tokens work.
 
 The Compact docs at [docs.midnight.network](https://docs.midnight.network) go deeper on the ledger primitives. The `example-nft-contracts` and `example-counter` repos on GitHub are the best reference for real patterns, since the generated TypeScript types they produce are what you actually import.

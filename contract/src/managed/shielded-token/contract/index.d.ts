@@ -14,6 +14,9 @@ export type ImpureCircuits<PS> = {
   burn(context: __compactRuntime.CircuitContext<PS>,
        holder_0: { bytes: Uint8Array },
        amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  transfer(context: __compactRuntime.CircuitContext<PS>,
+           to_0: { bytes: Uint8Array },
+           amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   mintShieldedToken(context: __compactRuntime.CircuitContext<PS>,
                     to_0: { bytes: Uint8Array },
                     amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
@@ -30,6 +33,9 @@ export type ProvableCircuits<PS> = {
   burn(context: __compactRuntime.CircuitContext<PS>,
        holder_0: { bytes: Uint8Array },
        amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  transfer(context: __compactRuntime.CircuitContext<PS>,
+           to_0: { bytes: Uint8Array },
+           amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   mintShieldedToken(context: __compactRuntime.CircuitContext<PS>,
                     to_0: { bytes: Uint8Array },
                     amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
@@ -50,6 +56,9 @@ export type Circuits<PS> = {
   burn(context: __compactRuntime.CircuitContext<PS>,
        holder_0: { bytes: Uint8Array },
        amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
+  transfer(context: __compactRuntime.CircuitContext<PS>,
+           to_0: { bytes: Uint8Array },
+           amount_0: bigint): __compactRuntime.CircuitResults<PS, []>;
   deriveAdminPublicKey(context: __compactRuntime.CircuitContext<PS>,
                        sk_0: { bytes: Uint8Array }): __compactRuntime.CircuitResults<PS, { bytes: Uint8Array
                                                                                          }>;

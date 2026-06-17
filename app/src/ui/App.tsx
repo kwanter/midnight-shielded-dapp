@@ -4,12 +4,15 @@ import {
   deployContract,
   createFreshAdminKey,
   mintTokens,
+  transferTokens,
   balanceOfHolder
 } from "../api/contract";
 
 // Stand-in coin public key for the test recipient. A real deployment
 // reads this from the user's wallet via getShieldedAddresses().
 const DEMO_RECIPIENT = new Uint8Array(32).fill(7);
+// A second demo holder used as the transfer target.
+const DEMO_OTHER_HOLDER = new Uint8Array(32).fill(11);
 
 export default function App() {
   const [state, setState] = useState<DappState>({
@@ -22,6 +25,8 @@ export default function App() {
   const [adminKey, setAdminKey] = useState<Uint8Array | null>(null);
   const [mintAmount, setMintAmount] = useState("100");
   const [recipientBalance, setRecipientBalance] = useState<bigint>(0n);
+  const [transferAmount, setTransferAmount] = useState("50");
+  const [otherHolderBalance, setOtherHolderBalance] = useState<bigint>(0n);
 
   const handleDeploy = useCallback(() => {
     const key = createFreshAdminKey();
@@ -59,6 +64,32 @@ export default function App() {
     }
   }, [mintAmount]);
 
+  // Atomic transfer from the demo recipient (the funded holder) to
+  // the other demo holder. The sender identity is implicit: the circuit
+  // reads ownPublicKey(), which in the simulator reflects whoever last
+  // set the caller. Here we model the funded recipient sending onward.
+  const handleTransfer = useCallback(() => {
+    let amount: bigint;
+    try {
+      amount = BigInt(transferAmount);
+    } catch {
+      setState((prev) => ({ ...prev, error: "Invalid amount. Enter a whole number." }));
+      return;
+    }
+    if (amount <= 0n) return;
+    const s = transferTokens(DEMO_OTHER_HOLDER, amount);
+    setState(s);
+    if (s.status === "ready") {
+      setTotalSupply(s.totalSupply);
+      try {
+        setRecipientBalance(balanceOfHolder(DEMO_RECIPIENT));
+        setOtherHolderBalance(balanceOfHolder(DEMO_OTHER_HOLDER));
+      } catch (err) {
+        console.error("[handleTransfer] balanceOfHolder", err);
+      }
+    }
+  }, [transferAmount]);
+
   return (
     <div style={styles.container}>
       <Header />
@@ -71,7 +102,17 @@ export default function App() {
           onDeploy={handleDeploy}
           onMint={handleMint}
         />
-        <BalancePanel totalSupply={totalSupply} recipientBalance={recipientBalance} />
+        <TransferPanel
+          state={state}
+          transferAmount={transferAmount}
+          setTransferAmount={setTransferAmount}
+          onTransfer={handleTransfer}
+        />
+        <BalancePanel
+          totalSupply={totalSupply}
+          recipientBalance={recipientBalance}
+          otherHolderBalance={otherHolderBalance}
+        />
       </div>
       <Footer />
     </div>
@@ -177,7 +218,63 @@ function MintPanel({
   );
 }
 
-function BalancePanel({ totalSupply, recipientBalance }: { totalSupply: bigint; recipientBalance: bigint }) {
+function TransferPanel({
+  state,
+  transferAmount,
+  setTransferAmount,
+  onTransfer
+}: {
+  state: DappState;
+  transferAmount: string;
+  setTransferAmount: (v: string) => void;
+  onTransfer: () => void;
+}) {
+  return (
+    <div style={styles.card}>
+      <h2 style={styles.cardTitle}>Transfer (mint_and_send)</h2>
+      {state.status !== "ready" ? (
+        <p style={{ color: "#7a8a9e", fontSize: 13 }}>Deploy and mint first.</p>
+      ) : (
+        <>
+          <div style={styles.row}>
+            <span>From:</span>
+            <code style={styles.code}>{hexEncode(DEMO_RECIPIENT)}</code>
+          </div>
+          <div style={{ ...styles.row, marginTop: 8 }}>
+            <span>To:</span>
+            <code style={styles.code}>{hexEncode(DEMO_OTHER_HOLDER)}</code>
+          </div>
+          <div style={{ ...styles.row, marginTop: 8 }}>
+            <span>Amount:</span>
+            <input
+              type="number"
+              min="1"
+              value={transferAmount}
+              onChange={(e) => setTransferAmount(e.target.value)}
+              style={styles.input}
+            />
+          </div>
+          <button
+            onClick={onTransfer}
+            style={{ ...styles.button, backgroundColor: "#6f42c1" }}
+          >
+            Transfer Tokens
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function BalancePanel({
+  totalSupply,
+  recipientBalance,
+  otherHolderBalance
+}: {
+  totalSupply: bigint;
+  recipientBalance: bigint;
+  otherHolderBalance: bigint;
+}) {
   return (
     <div style={styles.card}>
       <h2 style={styles.cardTitle}>Balances</h2>
@@ -188,6 +285,10 @@ function BalancePanel({ totalSupply, recipientBalance }: { totalSupply: bigint; 
       <div style={styles.row}>
         <span>Recipient Balance:</span>
         <span style={{ fontWeight: 600 }}>{String(recipientBalance)}</span>
+      </div>
+      <div style={styles.row}>
+        <span>Other Holder Balance:</span>
+        <span style={{ fontWeight: 600 }}>{String(otherHolderBalance)}</span>
       </div>
     </div>
   );

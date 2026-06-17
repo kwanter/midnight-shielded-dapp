@@ -87,7 +87,32 @@ export function mintTokens(
     return makeState("ready", { address: "simulator", totalSupply: readTotalSupply() });
   } catch (err) {
     console.error("[mintTokens]", err);
-    // Preserve known contract state instead of zeroing totalSupply.
+    return makeState("error", {
+      address: "simulator",
+      totalSupply: safeTotalSupply(),
+      error: String(err),
+    });
+  }
+}
+
+// Atomic transfer from the caller to a recipient. The caller identity is
+// read via ownPublicKey() inside the circuit, so we do not pass a sender.
+// The recipient gets credited; supply is unchanged.
+export function transferTokens(
+  recipientPubKeyBytes: Uint8Array,
+  amount: bigint
+): DappState {
+  try {
+    requireContract();
+    const result = contract!.impureCircuits.transfer(
+      ctx!,
+      { bytes: recipientPubKeyBytes },
+      amount
+    );
+    ctx = result.context;
+    return makeState("ready", { address: "simulator", totalSupply: readTotalSupply() });
+  } catch (err) {
+    console.error("[transferTokens]", err);
     return makeState("error", {
       address: "simulator",
       totalSupply: safeTotalSupply(),

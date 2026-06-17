@@ -113,4 +113,15 @@ export class ShieldedTokenSimulator {
       amount
     ).context;
   }
+
+  // Atomic transfer from the current caller to a recipient. The caller
+  // identity is read via ownPublicKey() inside the circuit, which pulls
+  // from the zswap local state. Call setCaller() first to set the sender.
+  public transfer(to: Recipient, amount: bigint): void {
+    this.circuitContext = this.contract.impureCircuits.transfer(
+      this.circuitContext,
+      to,
+      amount
+    ).context;
+  }
 }

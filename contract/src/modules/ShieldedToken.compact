@@ -36,4 +36,31 @@ module ShieldedToken {
     balances.insert(disclose(holder), next);
     totalSupply = (totalSupply - disclose(amount)) as Uint<64>;
   }
+
+  // Atomic transfer: debit sender, credit recipient, supply unchanged.
+  // The sender is whoever calls the circuit (ownPublicKey), not a passed
+  // argument, so no holder can move tokens they do not own. The amount is
+  // disclosed so balances stay auditable. Total supply is untouched.
+  export circuit transfer(to: ZswapCoinPublicKey, amount: Uint<64>): [] {
+    assert(to != default<ZswapCoinPublicKey>, "Recipient cannot be empty.");
+    assert(disclose(amount) > 0, "Amount must be positive.");
+
+    const sender = ownPublicKey();
+    assert(sender != to, "Cannot transfer to yourself.");
+    assert(balances.member(disclose(sender)), "Sender has no balance.");
+    assert(balances.lookup(disclose(sender)) >= disclose(amount), "Insufficient balance.");
+
+    // Debit sender.
+    const senderPrev: Uint<64> = balances.lookup(disclose(sender));
+    balances.insert(disclose(sender), (senderPrev - disclose(amount)) as Uint<64>);
+
+    // Credit recipient. Insert a zero entry if they have no balance yet.
+    if (!balances.member(disclose(to))) {
+      balances.insert(disclose(to), 0);
+    }
+    const recipientPrev: Uint<64> = balances.lookup(disclose(to));
+    balances.insert(disclose(to), (recipientPrev + disclose(amount)) as Uint<64>);
+
+    // totalSupply deliberately unchanged.
+  }
 }

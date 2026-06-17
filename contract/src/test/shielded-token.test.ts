@@ -99,4 +99,45 @@ describe("ShieldedToken contract", () => {
     expect(sim.balanceOf(otherHolder)).toEqual(250n);
     expect(sim.getLedger().totalSupply).toEqual(750n);
   });
+
+  // --- Atomic transfer (mint_and_send pattern) tests ---
+
+  it("transfers tokens between holders atomically, supply unchanged", () => {
+    const sim = new ShieldedTokenSimulator(freshAdminKey());
+    sim.mintShieldedToken(sampleRecipient, 1000n);
+    // Pretend the recipient is the caller, sending to otherHolder.
+    sim.setCaller(sampleRecipient);
+    sim.transfer(otherHolder, 300n);
+    expect(sim.balanceOf(sampleRecipient)).toEqual(700n);
+    expect(sim.balanceOf(otherHolder)).toEqual(300n);
+    expect(sim.getLedger().totalSupply).toEqual(1000n);
+  });
+
+  it("creates a balance entry for a first-time recipient on transfer", () => {
+    const sim = new ShieldedTokenSimulator(freshAdminKey());
+    sim.mintShieldedToken(sampleRecipient, 100n);
+    sim.setCaller(sampleRecipient);
+    sim.transfer(otherHolder, 40n);
+    expect(sim.balanceOf(otherHolder)).toEqual(40n);
+  });
+
+  it("rejects transfer of more than the sender owns", () => {
+    const sim = new ShieldedTokenSimulator(freshAdminKey());
+    sim.mintShieldedToken(sampleRecipient, 100n);
+    sim.setCaller(sampleRecipient);
+    expect(() => sim.transfer(otherHolder, 101n)).toThrow(/Insufficient balance/);
+  });
+
+  it("rejects transfer from a sender with no balance", () => {
+    const sim = new ShieldedTokenSimulator(freshAdminKey());
+    sim.setCaller(otherHolder);
+    expect(() => sim.transfer(sampleRecipient, 10n)).toThrow(/Sender has no balance/);
+  });
+
+  it("rejects transfer to yourself", () => {
+    const sim = new ShieldedTokenSimulator(freshAdminKey());
+    sim.mintShieldedToken(sampleRecipient, 100n);
+    sim.setCaller(sampleRecipient);
+    expect(() => sim.transfer(sampleRecipient, 10n)).toThrow(/yourself/);
+  });
 });
