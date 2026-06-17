@@ -33,17 +33,17 @@ if (typeof globalThis.crypto === "undefined") {
   globalThis.crypto = webcrypto;
 }
 
-const NETWORK_ID = "preview";
-const EXPLORER = "https://preview.midnightexplorer.com";
+const NETWORK_ID = "preprod";
+const EXPLORER = "https://preprod.midnightexplorer.com";
 const ENDPOINTS = {
-  nodeRpc: "https://rpc.preview.midnight.network",
-  indexer: "https://indexer.preview.midnight.network/api/v4/graphql",
-  indexerWs: "wss://indexer.preview.midnight.network/api/v4/graphql/ws",
+  nodeRpc: "https://rpc.preprod.midnight.network",
+  indexer: "https://indexer.preprod.midnight.network/api/v4/graphql",
+  indexerWs: "wss://indexer.preprod.midnight.network/api/v4/graphql/ws",
   // Proof server URL changes across environments and is not in the public
   // endpoints table. Verify at https://docs.midnight.network/relnotes/network
   // before running. Override via PROOF_SERVER_URL env var.
-  proofServer: process.env.PROOF_SERVER_URL || "https://proof-server.preview.midnight.network",
-  faucet: "https://midnight-tmnight-preview.nethermind.dev/",
+  proofServer: process.env.PROOF_SERVER_URL || "https://proof-server.preprod.midnight.network",
+  faucet: "https://midnight-tmnight-preprod.nethermind.dev/",
 };
 
 const SEED = process.env.DEPLOYER_SEED;
