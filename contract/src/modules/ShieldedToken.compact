@@ -1,0 +1,39 @@
+module ShieldedToken {
+
+  import CompactStandardLibrary;
+
+  export ledger totalSupply: Uint<64>;
+  export ledger balances: Map<ZswapCoinPublicKey, Uint<64>>;
+
+  export circuit balanceOf(holder: ZswapCoinPublicKey): Uint<64> {
+    assert(holder != default<ZswapCoinPublicKey>, "Holder cannot be empty.");
+    if (balances.member(disclose(holder))) {
+      return balances.lookup(disclose(holder));
+    } else {
+      return 0;
+    }
+  }
+
+  export circuit mint(to: ZswapCoinPublicKey, amount: Uint<64>): [] {
+    assert(to != default<ZswapCoinPublicKey>, "Recipient cannot be empty.");
+    assert(disclose(amount) > 0, "Amount must be positive.");
+
+    if (!balances.member(disclose(to))) {
+      balances.insert(disclose(to), 0);
+    }
+    const prev: Uint<64> = balances.lookup(disclose(to));
+    const next: Uint<64> = (prev + disclose(amount)) as Uint<64>;
+    balances.insert(disclose(to), next);
+    totalSupply = (totalSupply + disclose(amount)) as Uint<64>;
+  }
+
+  export circuit burn(holder: ZswapCoinPublicKey, amount: Uint<64>): [] {
+    assert(holder != default<ZswapCoinPublicKey>, "Holder cannot be empty.");
+    assert(balances.member(disclose(holder)), "Holder has no balance.");
+    assert(balances.lookup(disclose(holder)) >= disclose(amount), "Insufficient balance.");
+    const prev: Uint<64> = balances.lookup(disclose(holder));
+    const next: Uint<64> = (prev - disclose(amount)) as Uint<64>;
+    balances.insert(disclose(holder), next);
+    totalSupply = (totalSupply - disclose(amount)) as Uint<64>;
+  }
+}

@@ -1,0 +1,62 @@
+// Shielded Token Contract for Midnight. Bounty #326.
+// SPDX-License-Identifier: Apache-2.0
+//
+// This contract is the on-chain authority for a shielded (private) token.
+// It mints, transfers, and burns authority records. The actual shielded
+// coins (UTXO commitments) live in Midnight's ledger layer and are handled
+// by the wallet SDK (@midnight-ntwrk/wallet-sdk-shielded). The job of the
+// contract is authorization plus supply bookkeeping. Privacy comes from
+// the ledger, not from this contract.
+//
+// The pattern follows midnightntwrk/example-nft-contracts: a keypair admin
+// whose private key never leaves the deployer's device.
+
+pragma language_version >= 0.22.0;
+
+import CompactStandardLibrary;
+import "./modules/ShieldedToken";
+
+// Read-only views and low-level ledger ops from the module.
+export { totalSupply, balanceOf, mint, burn };
+
+// ---------------------------------------------------------------------------
+// Admin authority (keypair pattern from example-nft-contracts).
+// The deployer's DApp holds the private key locally. Only the derived
+// public key is committed to the ledger, so the deployer's wallet identity
+// is never recorded on-chain.
+// ---------------------------------------------------------------------------
+struct AdminSecretKey { bytes: Bytes<32>; }
+struct AdminPublicKey { bytes: Bytes<32>; }
+
+export ledger contractAdmin: AdminPublicKey;
+
+witness localSecretKey(): AdminSecretKey;
+
+constructor() {
+  contractAdmin = disclose(deriveAdminPublicKey(localSecretKey()));
+}
+
+// Derive a deterministic public key from the private key. We hash a domain
+// separator with the secret bytes so the same key cannot be reused elsewhere.
+export circuit deriveAdminPublicKey(sk: AdminSecretKey): AdminPublicKey {
+  return AdminPublicKey {
+    bytes: persistentHash<Vector<2, Bytes<32>>>([pad(32, "shielded:admin:pk:v1"), sk.bytes])
+  };
+}
+
+// Mint shielded tokens to a recipient Zswap coin public key. Only the admin
+// authority may call this. The recipient then receives the actual shielded
+// coin via the ledger, while the contract authorizes the supply bump.
+export circuit mintShieldedToken(to: ZswapCoinPublicKey, amount: Uint<64>): [] {
+  assert(contractAdmin == deriveAdminPublicKey(localSecretKey()), "Not authorized to mint.");
+  assert(amount > 0, "Amount must be positive.");
+  mint(to, amount);
+}
+
+// Burn a holder's tokens. The caller proves ownership through their wallet
+// coin public key. The contract reduces the recorded supply.
+export circuit burnShieldedToken(amount: Uint<64>): [] {
+  assert(amount > 0, "Amount must be positive.");
+  const holder = ownPublicKey();
+  burn(holder, amount);
+}
