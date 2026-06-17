@@ -1,0 +1,13 @@
+{
+  "name": "midnight-shielded-dapp",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "contract",
+    "app"
+  ],
+  "devDependencies": {
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.6.0"
+  }
+}
