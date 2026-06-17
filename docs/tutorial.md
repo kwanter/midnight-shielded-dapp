@@ -10,7 +10,7 @@ When I first looked at Midnight's privacy model, I kept tripping over the same q
 
 This tutorial answers that by building one. We write a Compact contract that mints, transfers, and burns shielded tokens, wire it through TypeScript, and drive it from a React frontend. By the end you will have a working dApp you can run locally, plus the mental model to take it to testnet.
 
-The full source lives at [the companion repo](https://github.com/example/midnight-shielded-dapp). Clone it, follow along, or just read the code.
+The full source lives at [the companion repo](https://github.com/kwanter/midnight-shielded-dapp). Clone it, follow along, or just read the code.
 
 ## What Midnight actually gives you
 
