@@ -98,6 +98,21 @@ export function mintTokens(
 // Atomic transfer from the caller to a recipient. The caller identity is
 // read via ownPublicKey() inside the circuit, so we do not pass a sender.
 // The recipient gets credited; supply is unchanged.
+//
+// IMPORTANT: setCaller() must be called first so the circuit knows who is
+// sending. Without it, ownPublicKey() returns the zero key from deploy and
+// the transfer fails with "Sender has no balance."
+export function setCaller(coinPubKeyBytes: Uint8Array): void {
+  requireContract();
+  ctx = {
+    ...ctx!,
+    currentZswapLocalState: {
+      ...ctx!.currentZswapLocalState,
+      coinPublicKey: { bytes: coinPubKeyBytes },
+    },
+  };
+}
+
 export function transferTokens(
   recipientPubKeyBytes: Uint8Array,
   amount: bigint
@@ -152,7 +167,8 @@ export function readTotalSupply(): bigint {
 function safeTotalSupply(): bigint {
   try {
     return readTotalSupply();
-  } catch {
+  } catch (err) {
+    console.warn("[safeTotalSupply] falling back to 0n:", err);
     return 0n;
   }
 }

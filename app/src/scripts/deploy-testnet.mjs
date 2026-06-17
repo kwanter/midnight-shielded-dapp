@@ -1,46 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Testnet deploy script for the ShieldedToken contract.
+// Testnet deploy script TEMPLATE for the ShieldedToken contract.
 //
-// This script deploys the contract to Midnight Preview testnet using the
-// wallet SDK (not the dApp connector browser API, since this runs in Node).
-// Run it after building the contract (`npm run build -w contract`).
+// STATUS: template, not verified end-to-end. The wallet SDK API surface
+// (parameter names, method names, proof server URL) must be confirmed
+// against current Midnight docs before running. See docs/TESTNET_DEPLOY.md.
 //
-// Prerequisites (see TESTNET_DEPLOY.md):
+// Prerequisites:
 //   1. Build the contract:  npm run build -w contract
-//   2. Generate a deployer seed (or reuse one): the wallet SDK derives keys
-//      from a seed phrase. Store it in DEPLOYER_SEED env var.
-//   3. Fund the deployer address at the Preview faucet.
-//   4. Set the network endpoints (defaults below point at Preview).
+//   2. Install wallet SDK deps (see TESTNET_DEPLOY.md)
+//   3. Set DEPLOYER_SEED env var to a funded wallet seed
+//   4. Verify PROOF_SERVER_URL against https://docs.midnight.network/relnotes/network
 //
 // Usage:
-//   DEPLOYER_SEED="<your-seed>" node --experimental-vm-modules \
-//     app/src/scripts/deploy-testnet.mjs
-//
-// Output: prints the deployed contract address + deploy tx hash. Paste the
-// tx hash into the tutorial and the issue comment to strengthen the
-// submission.
+//   DEPLOYER_SEED="<seed>" PROOF_SERVER_URL="<url>" \
+//     node app/src/scripts/deploy-testnet.mjs
 
-import {
-  Wallet,
-  type WalletServiceProvider,
-} from "@midnight-ntwrk/wallet";
-import {
-  walletSdk,
-} from "@midnight-ntwrk/wallet-sdk-facade";
-import { deployContract, findDeployedContract } from "@midnight-ntwrk/midnight-js-contracts";
-import {
-  httpClientProofProvider,
-} from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
-import {
-  indexerPublicDataProvider,
-} from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
-import {
-  levelPrivateStateProvider,
-} from "@midnight-ntwrk/midnight-js-level-private-state-provider";
-import {
-  FetchZkConfigProvider,
-} from "@midnight-ntwrk/midnight-js-node-zk-config-provider";
+import { webcrypto } from "node:crypto";
+import { walletSdk } from "@midnight-ntwrk/wallet-sdk-facade";
+import { deployContract } from "@midnight-ntwrk/midnight-js-contracts";
+import { httpClientProofProvider } from "@midnight-ntwrk/midnight-js-http-client-proof-provider";
+import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
+import { levelPrivateStateProvider } from "@midnight-ntwrk/midnight-js-level-private-state-provider";
 import {
   Contract as ShieldedTokenContract,
   witnesses,
@@ -48,65 +29,99 @@ import {
 } from "@midnight-ntwrk/shielded-token-contract";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 
-// Preview testnet endpoints. Swap for preprod/mainnet if needed.
+if (typeof globalThis.crypto === "undefined") {
+  globalThis.crypto = webcrypto;
+}
+
 const NETWORK_ID = "preview";
+const EXPLORER = "https://preview.midnightexplorer.com";
 const ENDPOINTS = {
   nodeRpc: "https://rpc.preview.midnight.network",
   indexer: "https://indexer.preview.midnight.network/api/v4/graphql",
   indexerWs: "wss://indexer.preview.midnight.network/api/v4/graphql/ws",
-  proofServer: "https://proof-server.preview.midnight.network/webgs",
+  // Proof server URL changes across environments and is not in the public
+  // endpoints table. Verify at https://docs.midnight.network/relnotes/network
+  // before running. Override via PROOF_SERVER_URL env var.
+  proofServer: process.env.PROOF_SERVER_URL || "https://proof-server.preview.midnight.network",
   faucet: "https://midnight-tmnight-preview.nethermind.dev/",
 };
 
 const SEED = process.env.DEPLOYER_SEED;
 if (!SEED) {
   console.error("Set DEPLOYER_SEED env var to the deployer wallet seed phrase.");
-  console.error("Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+  console.error("Generate one with:");
+  console.error('  node --input-type=module -e "import { randomBytes } from \'node:crypto\'; console.log(randomBytes(32).toString(\'hex\'))"');
   process.exit(1);
+}
+
+if (!process.env.PROOF_SERVER_URL) {
+  console.warn("WARNING: using default proof server URL. Verify it at");
+  console.warn("  https://docs.midnight.network/relres/network");
+  console.warn("Override with PROOF_SERVER_URL env var if wrong.\n");
 }
 
 setNetworkId(NETWORK_ID);
 
+async function withTimeout(promise, ms, label) {
+  const timer = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  );
+  return Promise.race([promise, timer]);
+}
+
 async function main() {
   console.log(`Deploying ShieldedToken to Midnight ${NETWORK_ID}...`);
-  console.log(`Node:    ${ENDPOINTS.nodeRpc}`);
-  console.log(`Indexer: ${ENDPOINTS.indexer}`);
+  console.log(`Node:         ${ENDPOINTS.nodeRpc}`);
+  console.log(`Indexer:      ${ENDPOINTS.indexer}`);
+  console.log(`Proof server: ${ENDPOINTS.proofServer}\n`);
 
-  // 1. Build the wallet. The wallet SDK derives keys from the seed and
-  //    manages coin selection, fee payment, and signing.
-  const wallet = await walletSdk({
-    seed: SEED,
-    networkId: NETWORK_ID,
-    indexer: ENDPOINTS.indexer,
-    indexerWs: ENDPOINTS.indexerWs,
-    proofServer: ENDPOINTS.proofServer,
-    nodeServer: ENDPOINTS.nodeRpc,
-  });
+  console.log("Building wallet...");
+  const wallet = await withTimeout(
+    walletSdk({
+      seed: SEED,
+      networkId: NETWORK_ID,
+      indexer: ENDPOINTS.indexer,
+      indexerWs: ENDPOINTS.indexerWs,
+      proofServer: ENDPOINTS.proofServer,
+      nodeRpc: ENDPOINTS.nodeRpc,
+    }),
+    30000,
+    "walletSdk init"
+  );
 
-  // Wait for the wallet to sync with the indexer.
-  console.log("Waiting for wallet to sync...");
-  await wallet.startSync();
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  console.log("Waiting for wallet sync (up to 30s)...");
+  try {
+    await withTimeout(wallet.startSync(), 30000, "wallet sync");
+  } catch (err) {
+    console.warn("Sync did not complete in 30s, continuing anyway:", err.message);
+  }
 
-  const deployerAddress = await wallet.getShieldedAddress();
+  // Method name may vary by SDK version. Verify against wallet-sdk-facade types.
+  const addressMethod =
+    typeof wallet.getShieldedAddress === "function"
+      ? "getShieldedAddress"
+      : typeof wallet.getShieldedAddresses === "function"
+        ? "getShieldedAddresses"
+        : null;
+  if (!addressMethod) {
+    throw new Error("Wallet has neither getShieldedAddress nor getShieldedAddresses. Check SDK version.");
+  }
+  const addressResult = await wallet[addressMethod]();
+  const deployerAddress =
+    typeof addressResult === "string" ? addressResult : addressResult.shieldedAddress;
   console.log(`Deployer shielded address: ${deployerAddress}`);
-  console.log(`Fund it at: ${ENDPOINTS.faucet}`);
+  console.log(`Fund it at: ${ENDPOINTS.faucet}\n`);
 
-  // 2. Assemble the providers that deployContract needs.
   const providers = {
     wallet,
     proofProvider: httpClientProofProvider(ENDPOINTS.proofServer),
     publicProvider: indexerPublicDataProvider(ENDPOINTS.indexer, ENDPOINTS.indexerWs),
     privateStateProvider: levelPrivateStateProvider("./private-state"),
-    zkConfigProvider: new FetchZkConfigProvider(ENDPOINTS.proofServer),
   };
 
-  // 3. Generate the admin key and the initial private state.
-  const adminKey = crypto.getRandomValues(new Uint8Array(32));
+  const adminKey = globalThis.crypto.getRandomValues(new Uint8Array(32));
   const privateState = createShieldedTokenPrivateState(adminKey);
 
-  // 4. Deploy. This builds the deploy tx, balances it with fees, proves it,
-  //    and submits to the node. It blocks until the tx is confirmed.
   console.log("Submitting deploy transaction...");
   const deployed = await deployContract(providers, {
     contract: new ShieldedTokenContract(witnesses),
@@ -115,14 +130,15 @@ async function main() {
 
   console.log("\n=== DEPLOY SUCCESSFUL ===");
   console.log(`Contract address: ${deployed.contractAddress}`);
-  console.log(`Deploy tx:        ${ENDPOINTS.nodeRpc.replace("rpc.", "explorer.").replace(".network", "explorer.com")}/transaction/${deployed.deployTxHash}`);
+  console.log(`Deploy tx:        ${EXPLORER}/transaction/${deployed.deployTxHash}`);
   console.log(`\nAdmin key (hex, keep secret): ${Buffer.from(adminKey).toString("hex")}`);
-  console.log(`\nNext steps:`);
-  console.log(`  1. Verify on explorer: https://preview.midnightexplorer.com/`);
-  console.log(`  2. Save the contract address + admin key for minting.`);
-  console.log(`  3. Paste the deploy tx hash into the tutorial.`);
+  console.log(`\nVerify on explorer: ${EXPLORER}`);
 
-  await wallet.stopSync();
+  try {
+    await wallet.stopSync();
+  } catch {
+    // best-effort
+  }
   process.exit(0);
 }
 

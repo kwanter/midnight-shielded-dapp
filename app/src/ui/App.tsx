@@ -5,6 +5,7 @@ import {
   createFreshAdminKey,
   mintTokens,
   transferTokens,
+  setCaller,
   balanceOfHolder
 } from "../api/contract";
 
@@ -51,7 +52,10 @@ export default function App() {
       setState((prev) => ({ ...prev, error: "Invalid amount. Enter a whole number." }));
       return;
     }
-    if (amount <= 0n) return;
+    if (amount <= 0n) {
+      setState((prev) => ({ ...prev, error: "Amount must be positive." }));
+      return;
+    }
     const s = mintTokens(DEMO_RECIPIENT, amount);
     setState(s);
     if (s.status === "ready") {
@@ -76,16 +80,26 @@ export default function App() {
       setState((prev) => ({ ...prev, error: "Invalid amount. Enter a whole number." }));
       return;
     }
-    if (amount <= 0n) return;
+    if (amount <= 0n) {
+      setState((prev) => ({ ...prev, error: "Amount must be positive." }));
+      return;
+    }
+    // The sender is the funded demo recipient. The circuit reads
+    // ownPublicKey(), which pulls from the zswap local state we set here.
+    setCaller(DEMO_RECIPIENT);
     const s = transferTokens(DEMO_OTHER_HOLDER, amount);
     setState(s);
     if (s.status === "ready") {
       setTotalSupply(s.totalSupply);
       try {
         setRecipientBalance(balanceOfHolder(DEMO_RECIPIENT));
+      } catch (err) {
+        console.error("[handleTransfer] recipient balance", err);
+      }
+      try {
         setOtherHolderBalance(balanceOfHolder(DEMO_OTHER_HOLDER));
       } catch (err) {
-        console.error("[handleTransfer] balanceOfHolder", err);
+        console.error("[handleTransfer] other holder balance", err);
       }
     }
   }, [transferAmount]);
