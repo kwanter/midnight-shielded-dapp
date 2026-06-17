@@ -61,6 +61,15 @@ export class ShieldedTokenSimulator {
     return this.circuitContext.currentPrivateState;
   }
 
+  // Swap the stored private state. Used by negative tests that need to
+  // simulate a caller holding a different admin key.
+  public replacePrivateState(next: ShieldedTokenPrivateState): void {
+    this.circuitContext = {
+      ...this.circuitContext,
+      currentPrivateState: next,
+    };
+  }
+
   // Replace the caller identity. Mutates the circuit context's Zswap local
   // state so that ownPublicKey() (which reads from there) returns the
   // chosen key. This is the simulator's stand-in for "signing the tx with

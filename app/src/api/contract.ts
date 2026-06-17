@@ -50,10 +50,7 @@ export function deployContract(adminKey: Uint8Array): DappState {
     contract = new Contract<ShieldedTokenPrivateState>(witnesses);
     const privateState = createShieldedTokenPrivateState(adminKey);
     const origin = "0".repeat(64); // hex-encoded empty coin public key for deploy
-    const constructorCtx = createConstructorContext(
-      { adminSecretKey: adminKey } as ShieldedTokenPrivateState,
-      origin
-    );
+    const constructorCtx = createConstructorContext(privateState, origin);
     const init = contract.initialState(constructorCtx);
     ctx = createCircuitContext(
       sampleContractAddress(),
@@ -61,9 +58,13 @@ export function deployContract(adminKey: Uint8Array): DappState {
       init.currentContractState,
       init.currentPrivateState
     );
-    return { status: "ready", address: "simulator (deploy to testnet for real address)", totalSupply: 0n, error: null };
+    return makeState("ready", {
+      address: "simulator (deploy to testnet for real address)",
+      totalSupply: 0n,
+    });
   } catch (err) {
-    return { status: "error", address: null, totalSupply: 0n, error: String(err) };
+    console.error("[deployContract]", err);
+    return makeState("error", { error: String(err) });
   }
 }
 
@@ -83,9 +84,15 @@ export function mintTokens(
       amount
     );
     ctx = result.context;
-    return { status: "ready", address: "simulator", totalSupply: readTotalSupply(), error: null };
+    return makeState("ready", { address: "simulator", totalSupply: readTotalSupply() });
   } catch (err) {
-    return { status: "error", address: null, totalSupply: 0n, error: String(err) };
+    console.error("[mintTokens]", err);
+    // Preserve known contract state instead of zeroing totalSupply.
+    return makeState("error", {
+      address: "simulator",
+      totalSupply: safeTotalSupply(),
+      error: String(err),
+    });
   }
 }
 
@@ -98,8 +105,9 @@ export function balanceOfHolder(holderPubKeyBytes: Uint8Array): bigint {
     );
     ctx = result.context;
     return result.result;
-  } catch {
-    return 0n;
+  } catch (err) {
+    console.error("[balanceOfHolder]", err);
+    throw err;
   }
 }
 
@@ -108,7 +116,32 @@ export function readTotalSupply(): bigint {
     requireContract();
     const l: Ledger = ledger(ctx!.currentQueryContext.state);
     return l.totalSupply;
+  } catch (err) {
+    console.error("[readTotalSupply]", err);
+    throw err;
+  }
+}
+
+// Like readTotalSupply but returns 0n instead of throwing. Used in error
+// states where the UI needs a number, not a crash.
+function safeTotalSupply(): bigint {
+  try {
+    return readTotalSupply();
   } catch {
     return 0n;
   }
+}
+
+// Single source of truth for building DappState objects.
+function makeState(
+  status: ContractStatus,
+  overrides: Partial<Omit<DappState, "status">> = {}
+): DappState {
+  return {
+    status,
+    address: null,
+    totalSupply: 0n,
+    error: null,
+    ...overrides,
+  };
 }

@@ -4,8 +4,7 @@ import {
   deployContract,
   createFreshAdminKey,
   mintTokens,
-  balanceOfHolder,
-  readTotalSupply
+  balanceOfHolder
 } from "../api/contract";
 
 // Stand-in coin public key for the test recipient. A real deployment
@@ -19,6 +18,7 @@ export default function App() {
     totalSupply: 0n,
     error: null,
   });
+  const [totalSupply, setTotalSupply] = useState<bigint>(0n);
   const [adminKey, setAdminKey] = useState<Uint8Array | null>(null);
   const [mintAmount, setMintAmount] = useState("100");
   const [recipientBalance, setRecipientBalance] = useState<bigint>(0n);
@@ -29,16 +29,34 @@ export default function App() {
     const s = deployContract(key);
     setState(s);
     if (s.status === "ready") {
-      setRecipientBalance(balanceOfHolder(DEMO_RECIPIENT));
+      setTotalSupply(s.totalSupply);
+      try {
+        setRecipientBalance(balanceOfHolder(DEMO_RECIPIENT));
+      } catch (err) {
+        console.error("[handleDeploy] balanceOfHolder", err);
+      }
     }
   }, []);
 
   const handleMint = useCallback(() => {
-    const amount = BigInt(mintAmount);
+    let amount: bigint;
+    try {
+      amount = BigInt(mintAmount);
+    } catch {
+      setState((prev) => ({ ...prev, error: "Invalid amount. Enter a whole number." }));
+      return;
+    }
     if (amount <= 0n) return;
     const s = mintTokens(DEMO_RECIPIENT, amount);
     setState(s);
-    setRecipientBalance(balanceOfHolder(DEMO_RECIPIENT));
+    if (s.status === "ready") {
+      setTotalSupply(s.totalSupply);
+      try {
+        setRecipientBalance(balanceOfHolder(DEMO_RECIPIENT));
+      } catch (err) {
+        console.error("[handleMint] balanceOfHolder", err);
+      }
+    }
   }, [mintAmount]);
 
   return (
@@ -52,10 +70,8 @@ export default function App() {
           setMintAmount={setMintAmount}
           onDeploy={handleDeploy}
           onMint={handleMint}
-          totalSupply={readTotalSupply()}
-          recipientBalance={recipientBalance}
         />
-        <BalancePanel totalSupply={readTotalSupply()} recipientBalance={recipientBalance} />
+        <BalancePanel totalSupply={totalSupply} recipientBalance={recipientBalance} />
       </div>
       <Footer />
     </div>
@@ -74,13 +90,11 @@ function Header() {
 function ConnectionPanel({ state, adminKey }: { state: DappState; adminKey: Uint8Array | null }) {
   const statusLabel = {
     none: "Not deployed",
-    deploying: "Deploying...",
     ready: "Ready",
     error: "Error"
   }[state.status];
   const statusColor = {
     none: "#999",
-    deploying: "#f0ad4e",
     ready: "#5cb85c",
     error: "#d9534f"
   }[state.status];
@@ -123,8 +137,6 @@ function MintPanel({
   setMintAmount: (v: string) => void;
   onDeploy: () => void;
   onMint: () => void;
-  totalSupply: bigint;
-  recipientBalance: bigint;
 }) {
   return (
     <div style={styles.card}>
